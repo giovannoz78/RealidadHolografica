@@ -30,7 +30,8 @@ canvas { position:fixed; top:0; left:0; z-index:1; }
   <div>+/-: frecuencia (Modo 3) | B: romper hilos | W: consciencia (Modo 4) | DRAG: orbitar | CLICK: pirámide</div>
   <div id="mode">Modo: CAMPO HOLOGRÁFICO</div>
   <div id="hover"></div>
-  <div id="info">Pirámides: 0</div>
+  <div id="freq" style="color:#ff9696;min-height:16px;"></div>
+  <div id="cons" style="color:#96ffcc;min-height:16px;"></div>
 </div>
 <div id="hud-r">34 líneas · φ = 1.618<br>Ángulo áureo 137.5°<br>Pirámides 4 lados</div>
 
@@ -259,6 +260,65 @@ function modeLiberation() {
   matrixOn=false;
   for (const m of mThreads) m.breaking=true;
   if (frame%10===0) spawnPart(TL[Math.floor(Math.random()*TL.length)], false);
+  // ── ESFERA DE CONSCIENCIA ──
+  drawConSphere(consLv);
+}
+
+function drawConSphere(lv) {
+  if (lv < 0.05) return;
+  const R = lv * 700;
+  const segs = 24;
+  const a = lv * 0.25;
+  ctx.strokeStyle = `rgba(200,255,240,${a})`;
+  ctx.lineWidth = 1.0;
+  // latitudes
+  for (let lat = -80; lat <= 80; lat += 20) {
+    const phi = lat * Math.PI / 180;
+    const r2 = R * Math.cos(phi);
+    const y  = R * Math.sin(phi);
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const theta = (i / segs) * Math.PI * 2;
+      const p = project(Math.cos(theta) * r2, y, Math.sin(theta) * r2);
+      if (p) pts.push(p);
+    }
+    if (pts.length < 2) continue;
+    ctx.beginPath(); ctx.moveTo(pts[0].sx, pts[0].sy);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+    ctx.stroke();
+  }
+  // longitudes
+  for (let lon = 0; lon < 360; lon += 30) {
+    const theta = lon * Math.PI / 180;
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const phi = (i / segs - 0.5) * Math.PI;
+      const p = project(R * Math.cos(phi) * Math.cos(theta), R * Math.sin(phi), R * Math.cos(phi) * Math.sin(theta));
+      if (p) pts.push(p);
+    }
+    if (pts.length < 2) continue;
+    ctx.beginPath(); ctx.moveTo(pts[0].sx, pts[0].sy);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+    ctx.stroke();
+  }
+  // pulsos adicionales Fibonacci
+  for (let i = 0; i < 5; i++) {
+    const pulse = (fibPh + i * Math.PI * 2 / 5) % (Math.PI * 2);
+    const pr = Math.abs(Math.sin(pulse)) * FIB[i+3] * 8 + R;
+    const pa = (1 - pulse / (Math.PI*2)) * lv * 0.15;
+    ctx.strokeStyle = `rgba(220,255,200,${pa})`;
+    ctx.lineWidth = 0.8;
+    const pts2 = [];
+    for (let j = 0; j <= segs; j++) {
+      const theta = (j / segs) * Math.PI * 2;
+      const p = project(Math.cos(theta) * pr, 0, Math.sin(theta) * pr);
+      if (p) pts2.push(p);
+    }
+    if (pts2.length < 2) continue;
+    ctx.beginPath(); ctx.moveTo(pts2[0].sx, pts2[0].sy);
+    for (let j = 1; j < pts2.length; j++) ctx.lineTo(pts2[j].sx, pts2[j].sy);
+    ctx.stroke();
+  }
 }
 
 // ── DRAW HELPERS ──────────────────────────────────────────────
@@ -468,6 +528,8 @@ function updateHUD() {
   document.getElementById('mode').textContent='Modo: '+MODES[viewMode];
   document.getElementById('hover').textContent=hovIdx>=0?'⚡ HOVER timeline '+hovIdx+' | Glow '+glowI.toFixed(1)+'x':'';
   document.getElementById('info').textContent='Pirámides: '+xPyrs.length+' | Fibonacci: '+(showFib?'SÍ':'NO');
+  document.getElementById('freq').textContent='Frec. emocional: '+emoFreq.toFixed(2)+' | Hilos: '+mThreads.length;
+  document.getElementById('cons').textContent='Consciencia: '+(consLv*100).toFixed(0)+'%';
 }
 
 // ── INPUT ─────────────────────────────────────────────────────
@@ -508,12 +570,13 @@ document.addEventListener('touchmove', e=>{
 
 document.addEventListener('keydown', e=>{
   const k=e.key;
+  const c=e.code;
   if(k===' '){e.preventDefault();viewMode=(viewMode+1)%5;if(viewMode===3){matrixOn=true;mThreads.length=0;}if(viewMode===4){consLv=0;matrixOn=false;}}
   if(k==='r'||k==='R') autoRot=!autoRot;
   if(k==='s'||k==='S') selIdx=Math.floor(Math.random()*TL.length);
   if(k==='c'||k==='C'){emotions.length=0;xPyrs.length=0;}
-  if(k==='+'||k==='=') emoFreq=Math.min(1,emoFreq+.05);
-  if(k==='-'||k==='_') emoFreq=Math.max(0,emoFreq-.05);
+  if(k==='+'||k==='='||c==='Equal'||c==='NumpadAdd') emoFreq=Math.min(1,emoFreq+.05);
+  if(k==='-'||k==='_'||c==='Minus'||c==='NumpadSubtract') emoFreq=Math.max(0,emoFreq-.05);
   if(k==='b'||k==='B'){for(const m of mThreads)m.breaking=true;matrixOn=false;}
   if(k==='w'||k==='W') { viewMode=4; matrixOn=false; consLv=Math.min(1,consLv+.1); }
   if(k==='f'||k==='F') showFib=!showFib;
