@@ -9,20 +9,20 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#080a0f; overflow:hidden; }
 #hud {
-  position:fixed; top:0; left:0; pointer-events:none;
+  position:fixed; top:0; left:0; pointer-events:none; z-index:99;
   font-family:monospace; font-size:11px; color:#c8dcff;
-  padding:16px; line-height:1.75; z-index:99;
+  padding:16px; line-height:1.75;
 }
 #hud h2 { font-size:13px; color:#d0e8ff; margin-bottom:4px; }
-#mode   { color:#ffff90; margin-top:4px; }
-#hover  { color:#ffc864; min-height:16px; }
-#info   { color:#b4dcff; }
-#freq   { color:#ff9696; min-height:16px; }
-#cons   { color:#96ffcc; min-height:16px; }
-#hud-r  {
-  position:fixed; top:16px; right:16px; pointer-events:none;
+#mode  { color:#ffff90; margin-top:4px; }
+#hover { color:#ffc864; min-height:16px; }
+#info  { color:#b4dcff; }
+#freq  { color:#ff9696; min-height:16px; }
+#cons  { color:#96ffcc; min-height:16px; }
+#hud-r {
+  position:fixed; top:16px; right:16px; pointer-events:none; z-index:99;
   font-family:monospace; font-size:10px; color:rgba(180,200,255,0.6);
-  line-height:1.9; text-align:right; z-index:99;
+  line-height:1.9; text-align:right;
 }
 </style>
 </head>
@@ -43,397 +43,391 @@ body { background:#080a0f; overflow:hidden; }
 </div>
 
 <script>
+// ============================================================
+//  REALIDAD HOLOGRÁFICA p5.js WEBGL
+//  Bug fix: circle() no existe en WEBGL → usar ellipse()
+//  stroke(col, alpha) no existe → usar stroke(r,g,b,a)
+// ============================================================
+
 const PHI = 1.618033988749895;
 const FIB = [1,1,2,3,5,8,13,21,34,55,89,144,233,377,610,987,1597,2584,4181,6765];
 const MODES = ["CAMPO HOLOGRÁFICO","PROYECCIÓN SELECCIONADA","PROYECCIÓN COMPLETA","MATRIZ EMOCIONAL","LIBERACIÓN"];
 
-// globals
 let tl=[], emotions=[], mThreads=[], xPyrs=[];
 let selIdx=21, hovIdx=-1;
-let camY=0, camX=0.15, autoRot=true;
+let camRotY=0, camRotX=0.15, autoRot=true;
 let dragOn=false, lastMX=0, lastMY=0;
 let viewMode=0, emoFreq=0.3, matrixOn=true, consLv=0, glowI=1.0;
 let fibPh=0;
 let showFib=true;
 
-new p5(function(p) {
+function setup() {
+  let cnv = createCanvas(windowWidth, windowHeight, WEBGL);
+  cnv.style('position','fixed');
+  cnv.style('top','0');
+  cnv.style('left','0');
+  cnv.style('z-index','1');
 
-  p.setup = function() {
-    let cnv = p.createCanvas(p.windowWidth, p.windowHeight, p.WEBGL);
-    cnv.style('position','fixed');
-    cnv.style('top','0');
-    cnv.style('left','0');
-    cnv.style('z-index','1');
-    p.smooth();
-
-    // build timelines
-    for (let i=0; i<34; i++) {
-      let angle = i * p.TWO_PI / PHI;
-      let radius = FIB[Math.min(i,19)] * 2.5;
-      let hue = (i*137.5)%360;
-      let c = p.color(
-        100 + (hue%155),
-        150 + Math.floor((hue*1.2)%105),
-        200 + Math.floor((hue*0.8)%55)
-      );
-      tl.push({
-        x: p.cos(angle)*radius,
-        y: -150 + (Math.random()*100-50),
-        z: p.sin(angle)*radius,
-        col: c,
-        fibIdx: i,
-        phase: Math.random()*p.TWO_PI
-      });
-    }
-  };
-
-  p.windowResized = function() {
-    p.resizeCanvas(p.windowWidth, p.windowHeight);
-  };
-
-  p.draw = function() {
-    // reset projection every frame - critical for WEBGL stability
-    p.perspective(p.PI/3, p.width/p.height, 1, 15000);
-    p.background(8, 10, 15);
-
-    // camera position
-    let cx = p.sin(camY)*850;
-    let cz = p.cos(camY)*850;
-    let cy = p.sin(camX)*350 - 180;
-    p.camera(cx, cy, cz,  0, 0, 0,  0, 1, 0);
-
-    if (autoRot) camY += 0.003;
-    fibPh += 0.02;
-
-    // basic lights
-    p.ambientLight(70, 80, 100);
-    p.directionalLight(100, 120, 160, 0, -1, -0.5);
-
-    // hover detection
-    hovIdx = -1;
-    let minD = 45;
-    for (let i=0; i<tl.length; i++) {
-      let sx = p.screenX(tl[i].x, tl[i].y, tl[i].z);
-      let sy = p.screenY(tl[i].x, tl[i].y, tl[i].z);
-      let d  = p.dist(p.mouseX, p.mouseY, sx, sy);
-      if (d < minD) { hovIdx=i; minD=d; }
-    }
-    let tgtGlow = hovIdx>=0 ? 3.5 : 1.0;
-    glowI = p.lerp(glowI, tgtGlow, 0.15);
-
-    // fibonacci spirals
-    if (showFib) drawSpirals(p);
-
-    // draw mode
-    if      (viewMode===0) drawField(p);
-    else if (viewMode===1) drawSel(p, 0.5);
-    else if (viewMode===2) drawFull(p);
-    else if (viewMode===3) drawMatrix(p);
-    else if (viewMode===4) drawLiberation(p);
-
-    // extra pyramids
-    for (let i=xPyrs.length-1; i>=0; i--) {
-      let ep=xPyrs[i];
-      ep.comp=Math.min(1, ep.comp+ep.speed);
-      ep.life--;
-      if (ep.life<=0) { xPyrs.splice(i,1); continue; }
-      let af=ep.life/ep.maxLife;
-      drawPyramid(p, ep.ax,ep.ay,ep.az, ep.bx,ep.bz, ep.bs*ep.comp, af*0.75, ep.col);
-    }
-
-    // particles
-    for (let i=emotions.length-1; i>=0; i--) {
-      let e=emotions[i];
-      e.vx += (p.noise(e.x*.01, p.frameCount*.01)-.5) * (e.ctrl?.2:.5);
-      e.vy += e.ctrl ? .15 : -.03;
-      e.vz += (p.noise(e.z*.01, p.frameCount*.01+10)-.5) * (e.ctrl?.2:.5);
-      e.vx*=e.ctrl?.95:.98; e.vy*=e.ctrl?.95:.98; e.vz*=e.ctrl?.95:.98;
-      e.x+=e.vx; e.y+=e.vy; e.z+=e.vz;
-      e.life--; e.sz+=.06;
-      if (e.life<=0) { emotions.splice(i,1); continue; }
-      p.push();
-      p.translate(e.x, e.y, e.z);
-      let a = Math.min(255, e.life * glowI * 0.8);
-      p.noFill();
-      p.stroke(p.red(e.col), p.green(e.col), p.blue(e.col), a);
-      p.strokeWeight(1.5);
-      p.sphere(e.sz);
-      p.pop();
-    }
-
-    // matrix threads
-    for (let i=mThreads.length-1; i>=0; i--) {
-      let m=mThreads[i];
-      if (m.breaking) { m.prog=Math.max(0,m.prog-.03); }
-      else { m.prog=Math.min(1,m.prog+.02); }
-      if (m.breaking && m.prog<=0) { mThreads.splice(i,1); continue; }
-      let cx2=m.sx+(m.ex-m.sx)*m.prog, cy2=m.sy+(m.ey-m.sy)*m.prog, cz2=m.sz+(m.ez-m.sz)*m.prog;
-      let a=(m.breaking?m.prog*100:100)*glowI*0.6;
-      p.stroke(m.r, m.g, m.b, a);
-      p.strokeWeight(1);
-      p.line(m.sx,m.sy,m.sz, cx2,cy2,cz2);
-    }
-
-    updateHUD(p);
-  };
-
-  // ─── MODES ────────────────────────────────────────────────
-
-  function drawField(p) {
-    for (let i=0; i<tl.length; i++) {
-      let t=tl[i], hov=(i===hovIdx);
-      drawTL(p,t,hov,1.0);
-      for (let j=i+1; j<tl.length; j++) {
-        let o=tl[j];
-        let dx=t.x-o.x, dy=t.y-o.y, dz=t.z-o.z;
-        let d=Math.sqrt(dx*dx+dy*dy+dz*dz);
-        let cd=FIB[t.fibIdx%20]*3;
-        if (d<cd) {
-          let a=p.map(d,0,cd,28,0)*(hov?2:1);
-          p.stroke(80,120,160,a);
-          p.strokeWeight(hov?1:.5);
-          p.line(t.x,t.y,t.z, o.x,o.y,o.z);
-        }
-      }
-    }
-    drawTLSel(p, tl[selIdx]);
-    if (hovIdx>=0 && p.frameCount%5===0) spawnPart(p, tl[hovIdx], false);
-  }
-
-  function drawSel(p, comp) {
-    for (let i=0; i<tl.length; i++) if(i!==selIdx) drawTL(p,tl[i],i===hovIdx,.15);
-    drawTLSel(p, tl[selIdx]);
-    drawPyramidFromTL(p, tl[selIdx], comp);
-    if (p.frameCount%21===0) spawnPart(p, tl[selIdx], false);
-  }
-
-  function drawFull(p) {
-    for (let i=0; i<tl.length; i++) if(i!==selIdx) drawTL(p,tl[i],i===hovIdx,.06);
-    drawTLSel(p, tl[selIdx]);
-    drawPyramidFromTL(p, tl[selIdx], 1.0);
-    drawGrid(p, tl[selIdx]);
-    if (p.frameCount%8===0) spawnPart(p, tl[selIdx], false);
-  }
-
-  function drawMatrix(p) {
-    for (let i=0; i<tl.length; i++) drawTL(p,tl[i],i===hovIdx,.06);
-    drawTLSel(p, tl[selIdx]);
-    drawPyramidFromTL(p, tl[selIdx], 1.0);
-    if (matrixOn && p.frameCount%13===0 && mThreads.length<89) {
-      let a=Math.random()*p.TWO_PI;
-      let fr=p.map(emoFreq,0,1,255,120), fg=p.map(emoFreq,0,1,80,120), fb=p.map(emoFreq,0,1,80,200);
-      mThreads.push({
-        sx:Math.cos(a)*600, sy:Math.random()*500-200, sz:Math.sin(a)*600,
-        ex:tl[selIdx].x+(Math.random()-.5)*80, ey:200, ez:tl[selIdx].z+(Math.random()-.5)*80,
-        prog:0, breaking:false, r:fr, g:fg, b:fb
-      });
-    }
-    if (p.frameCount%5===0) spawnPart(p, tl[selIdx], true);
-  }
-
-  function drawLiberation(p) {
-    consLv=Math.min(1, consLv+.004);
-    for (let i=0; i<tl.length; i++) {
-      if (i===selIdx) continue;
-      let t=tl[i], hov=(i===hovIdx);
-      p.push(); p.translate(t.x,t.y,t.z);
-      p.noFill();
-      p.stroke(150,200,255, consLv*60*(hov?2:1));
-      p.strokeWeight(1+consLv*(hov?2:1));
-      p.sphere((3+consLv*2)*(hov?1.5:1));
-      p.pop();
-    }
-    drawTLSel(p, tl[selIdx]);
-    drawPyramidFromTL(p, tl[selIdx], 1.0-consLv*.7);
-    matrixOn=false; for(let m of mThreads) m.breaking=true;
-    if (p.frameCount%10===0) spawnPart(p, tl[Math.floor(Math.random()*tl.length)], false);
-    // consciousness sphere
-    p.push(); p.noFill();
-    p.stroke(200,255,240, consLv*35);
-    p.strokeWeight(1.5);
-    p.sphere(consLv*700);
-    p.pop();
-  }
-
-  // ─── DRAW HELPERS ─────────────────────────────────────────
-
-  function drawTL(p, t, hov, fade) {
-    p.push(); p.translate(t.x, t.y, t.z);
-    let pulse=Math.sin(p.frameCount*.05+t.phase)*.3+.7;
-    if(hov) pulse*=1.8;
-    let bs=FIB[Math.min(t.fibIdx%8,7)]*.3;
-    p.noFill();
-    p.stroke(p.red(t.col), p.green(t.col), p.blue(t.col), 150*pulse*fade*(hov?1.5:1));
-    p.strokeWeight(hov?2.5:1.5);
-    p.sphere((bs+4)*(hov?1.5:1));
-    // ring
-    p.rotateY(p.frameCount*.02);
-    p.strokeWeight(hov?.8:.4);
-    p.stroke(p.red(t.col), p.green(t.col), p.blue(t.col), 70*pulse*fade*(hov?2:1));
-    let ring=(bs*6+18)*(hov?1.3:1);
-    p.circle(0,0,ring);
-    p.rotateX(p.HALF_PI);
-    p.circle(0,0,ring);
-    p.pop();
-  }
-
-  function drawTLSel(p, t) {
-    p.push(); p.translate(t.x, t.y, t.z);
-    let pulse=Math.sin(p.frameCount*.08)*.5+1;
-    p.noFill(); p.stroke(255,255,200,200); p.strokeWeight(2.5);
-    p.sphere(5*pulse);
-    for (let i=0;i<5;i++) {
-      p.push();
-      p.rotateY(p.frameCount*.03+i*p.PI/5);
-      p.rotateX(i*p.PI/5);
-      p.strokeWeight(1); p.stroke(255,255,150,120);
-      let rr=FIB[i+3]*2; p.circle(0,0,rr);
-      p.pop();
-    }
-    p.pop();
-  }
-
-  function drawPyramidFromTL(p, t, comp) {
-    drawPyramid(p, t.x,t.y,t.z, t.x,t.z, 120*PHI, comp, p.color(180,200,255,170));
-  }
-
-  function drawPyramid(p, ax,ay,az, bx,bz, bs, comp, col) {
-    let apex={x:ax,y:ay,z:az};
-    let base={x:bx,y:200,z:bz};
-    let verts=[
-      {x:base.x-bs, y:base.y, z:base.z-bs},
-      {x:base.x+bs, y:base.y, z:base.z-bs},
-      {x:base.x+bs, y:base.y, z:base.z+bs},
-      {x:base.x-bs, y:base.y, z:base.z+bs},
-    ];
-    // lerp verts toward apex by (1-comp)
-    let av=verts.map(v=>({
-      x:apex.x+(v.x-apex.x)*comp,
-      y:apex.y+(v.y-apex.y)*comp,
-      z:apex.z+(v.z-apex.z)*comp
-    }));
-    p.noFill();
-    p.stroke(p.red(col), p.green(col), p.blue(col), p.alpha(col)*glowI*.8);
-    p.strokeWeight(1.5);
-    // 4 apex edges
-    for (let v of av) p.line(apex.x,apex.y,apex.z, v.x,v.y,v.z);
-    // base square
-    for (let i=0;i<4;i++) {
-      let n=(i+1)%4;
-      p.line(av[i].x,av[i].y,av[i].z, av[n].x,av[n].y,av[n].z);
-    }
-    // fill levels
-    if (comp>.3) {
-      for (let k=1;k<8;k++) {
-        let t2=k/8;
-        let ps=av.map(v=>({
-          x:apex.x+(v.x-apex.x)*t2,
-          y:apex.y+(v.y-apex.y)*t2,
-          z:apex.z+(v.z-apex.z)*t2
-        }));
-        p.stroke(200,180,255, p.map(t2,0,1,8,25)*comp);
-        p.strokeWeight(.5);
-        for (let i=0;i<4;i++) { let n=(i+1)%4; p.line(ps[i].x,ps[i].y,ps[i].z,ps[n].x,ps[n].y,ps[n].z); }
-      }
-    }
-  }
-
-  function drawGrid(p, t) {
-    p.push(); p.translate(t.x,200,t.z);
-    p.stroke(100,150,200,35); p.strokeWeight(.5); p.noFill();
-    for (let i=-10;i<=10;i++) {
-      p.line(-300,0,i*30, 300,0,i*30);
-      p.line(i*30,0,-300, i*30,0,300);
-    }
-    p.pop();
-  }
-
-  function drawSpirals(p) {
-    for (let s=0;s<3;s++) {
-      p.push();
-      p.rotateY(fibPh*.3 + s*p.TWO_PI/3);
-      p.rotateX(fibPh*.2);
-      p.noFill();
-      let cols=[[100,150,255],[60,200,220],[180,140,255]];
-      p.stroke(cols[s][0],cols[s][1],cols[s][2], 80);
-      p.strokeWeight(1.2);
-      p.beginShape();
-      for (let i=0;i<100;i++) {
-        let a=i*p.TWO_PI/PHI;
-        let r=FIB[Math.min(i%13,12)]*2;
-        p.vertex(Math.cos(a)*r, Math.sin(a*PHI)*50, Math.sin(a)*r);
-      }
-      p.endShape();
-      p.pop();
-    }
-  }
-
-  function spawnPart(p, t, ctrl) {
-    let tx=t.x, ty=200, tz=t.z;
-    let dx=tx-t.x, dy=ty-t.y, dz=tz-t.z;
-    let len=Math.sqrt(dx*dx+dy*dy+dz*dz)||1;
-    let sp=2+Math.random()*2;
-    let cr=ctrl?200+Math.random()*55:150+Math.random()*105;
-    let cg=ctrl?80+Math.random()*60:100+Math.random()*100;
-    let cb=ctrl?100+Math.random()*60:200+Math.random()*55;
-    emotions.push({
-      x:t.x,y:t.y,z:t.z,
-      vx:dx/len*sp, vy:dy/len*sp, vz:dz/len*sp,
-      life:FIB[5+Math.floor(Math.random()*5)],
-      sz:2+Math.random()*3,
-      ctrl,
-      col:p.color(cr,cg,cb,150)
+  for (let i=0; i<34; i++) {
+    let angle = i * TWO_PI / PHI;
+    let radius = FIB[Math.min(i,19)] * 2.5;
+    let hue = (i*137.5)%360;
+    // color sin usar objeto color - guardar como r,g,b
+    let cr = 100 + Math.floor(hue%155);
+    let cg = 150 + Math.floor((hue*1.2)%105);
+    let cb = 200 + Math.floor((hue*0.8)%55);
+    tl.push({
+      x: cos(angle)*radius,
+      y: -150 + random(-50,50),
+      z: sin(angle)*radius,
+      r:cr, g:cg, b:cb,
+      fibIdx: i,
+      phase: random(TWO_PI)
     });
   }
+}
 
-  // ─── INPUT ────────────────────────────────────────────────
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
 
-  p.keyPressed = function() {
-    if (p.key===' ') { viewMode=(viewMode+1)%5; if(viewMode===3){matrixOn=true;mThreads=[];} if(viewMode===4){consLv=0;matrixOn=false;} }
-    if (p.key==='r'||p.key==='R') autoRot=!autoRot;
-    if (p.key==='s'||p.key==='S') selIdx=Math.floor(Math.random()*tl.length);
-    if (p.key==='c'||p.key==='C') { emotions=[]; xPyrs=[]; }
-    if (p.key==='+'||p.key==='=') emoFreq=Math.min(1,emoFreq+.05);
-    if (p.key==='-'||p.key==='_') emoFreq=Math.max(0,emoFreq-.05);
-    if (p.key==='b'||p.key==='B') { for(let m of mThreads) m.breaking=true; matrixOn=false; }
-    if (p.key==='w'||p.key==='W') consLv=Math.min(1,consLv+.1);
-    if (p.key==='f'||p.key==='F') showFib=!showFib;
-    return false;
-  };
+function draw() {
+  perspective(PI/3, width/height, 1, 15000);
+  background(8, 10, 15);
 
-  p.mousePressed = function() {
-    dragOn=true; lastMX=p.mouseX; lastMY=p.mouseY; autoRot=false;
-    let ti=hovIdx>=0?hovIdx:Math.floor(Math.random()*tl.length);
-    let t=tl[ti];
-    xPyrs.push({
-      ax:t.x,ay:t.y,az:t.z, bx:t.x,bz:t.z,
-      bs:0, comp:0, speed:.015+Math.random()*.02,
-      maxLife:FIB[8+Math.floor(Math.random()*5)]*15,
-      life:FIB[8+Math.floor(Math.random()*5)]*15,
-      col:p.color(150+Math.random()*105, 120+Math.random()*120, 200+Math.random()*55, 200)
-    });
-    xPyrs[xPyrs.length-1].bs=100+Math.random()*150;
-    if (xPyrs.length>20) xPyrs.shift();
-  };
-  p.mouseDragged = function() {
-    if (dragOn) {
-      camY+=(p.mouseX-lastMX)*.005;
-      camX=Math.max(-1.2,Math.min(1.2,camX+(p.mouseY-lastMY)*.005));
-      lastMX=p.mouseX; lastMY=p.mouseY;
-    }
-  };
-  p.mouseReleased = function() { dragOn=false; };
+  let cx = sin(camRotY)*850;
+  let cz = cos(camRotY)*850;
+  let cy = sin(camRotX)*350 - 180;
+  camera(cx, cy, cz,  0, 0, 0,  0, 1, 0);
 
-  // ─── HUD ──────────────────────────────────────────────────
-  function updateHUD(p) {
-    document.getElementById('mode').textContent='Modo: '+MODES[viewMode];
-    document.getElementById('hover').textContent=hovIdx>=0?'⚡ HOVER timeline '+hovIdx+' | Glow '+glowI.toFixed(1)+'x':'';
-    document.getElementById('info').textContent='Pirámides: '+xPyrs.length+' | Fibonacci: '+(showFib?'SÍ':'NO');
-    document.getElementById('freq').textContent=viewMode===3?'Frec. emocional: '+emoFreq.toFixed(2)+' | Hilos: '+mThreads.length:'';
-    document.getElementById('cons').textContent=viewMode===4?'Consciencia: '+(consLv*100).toFixed(0)+'%':'';
+  if (autoRot) camRotY += 0.003;
+  fibPh += 0.02;
+
+  ambientLight(70, 80, 100);
+  directionalLight(100, 120, 160, 0, -1, -0.5);
+
+  // hover
+  hovIdx = -1;
+  let minD = 45;
+  for (let i=0; i<tl.length; i++) {
+    let sx = screenX(tl[i].x, tl[i].y, tl[i].z);
+    let sy = screenY(tl[i].x, tl[i].y, tl[i].z);
+    let d  = dist(mouseX, mouseY, sx, sy);
+    if (d < minD) { hovIdx=i; minD=d; }
+  }
+  glowI = lerp(glowI, hovIdx>=0 ? 3.5 : 1.0, 0.15);
+
+  // fibonacci spirals
+  if (showFib) drawSpirals();
+
+  // modes
+  if      (viewMode===0) modeField();
+  else if (viewMode===1) modeSel(0.5);
+  else if (viewMode===2) modeFull();
+  else if (viewMode===3) modeMatrix();
+  else if (viewMode===4) modeLiberation();
+
+  // extra pyramids
+  for (let i=xPyrs.length-1; i>=0; i--) {
+    let ep=xPyrs[i];
+    ep.comp = min(1, ep.comp+ep.speed);
+    ep.life--;
+    if (ep.life<=0) { xPyrs.splice(i,1); continue; }
+    let af = ep.life/ep.maxLife;
+    drawPyramid(ep.ax,ep.ay,ep.az, ep.bx,ep.bz, ep.bs*ep.comp, af*0.75, ep.r,ep.g,ep.b, 170);
   }
 
-}); // end p5 instance
+  // particles
+  for (let i=emotions.length-1; i>=0; i--) {
+    let e=emotions[i];
+    e.vx += (noise(e.x*.01, frameCount*.01)-.5)*(e.ctrl?.2:.5);
+    e.vy += e.ctrl ? .15 : -.03;
+    e.vz += (noise(e.z*.01, frameCount*.01+10)-.5)*(e.ctrl?.2:.5);
+    e.vx*=e.ctrl?.95:.98; e.vy*=e.ctrl?.95:.98; e.vz*=e.ctrl?.95:.98;
+    e.x+=e.vx; e.y+=e.vy; e.z+=e.vz;
+    e.life--; e.sz+=.06;
+    if (e.life<=0) { emotions.splice(i,1); continue; }
+    push();
+    translate(e.x, e.y, e.z);
+    let a = min(200, e.life * glowI * 0.8);
+    noFill();
+    stroke(e.r, e.g, e.b, a);
+    strokeWeight(1.5);
+    sphere(e.sz);
+    pop();
+  }
+
+  // matrix threads
+  for (let i=mThreads.length-1; i>=0; i--) {
+    let m=mThreads[i];
+    if (m.breaking) m.prog=max(0,m.prog-.03);
+    else m.prog=min(1,m.prog+.02);
+    if (m.breaking && m.prog<=0) { mThreads.splice(i,1); continue; }
+    let cx2=m.sx+(m.ex-m.sx)*m.prog;
+    let cy2=m.sy+(m.ey-m.sy)*m.prog;
+    let cz2=m.sz+(m.ez-m.sz)*m.prog;
+    let a=(m.breaking?m.prog*100:100)*glowI*0.6;
+    stroke(m.r, m.g, m.b, a);
+    strokeWeight(1);
+    line(m.sx,m.sy,m.sz, cx2,cy2,cz2);
+  }
+
+  updateHUD();
+}
+
+// ─── MODES ────────────────────────────────────────────────────
+
+function modeField() {
+  for (let i=0; i<tl.length; i++) {
+    let t=tl[i], hov=(i===hovIdx);
+    drawTL(t, hov, 1.0);
+    for (let j=i+1; j<tl.length; j++) {
+      let o=tl[j];
+      let d=dist(t.x,t.y,t.z, o.x,o.y,o.z);
+      let cd=FIB[t.fibIdx%20]*3;
+      if (d<cd) {
+        let a=map(d,0,cd,28,0)*(hov?2:1);
+        stroke(80,120,160,a);
+        strokeWeight(hov?1:.5);
+        line(t.x,t.y,t.z, o.x,o.y,o.z);
+      }
+    }
+  }
+  drawTLSel(tl[selIdx]);
+  if (hovIdx>=0 && frameCount%5===0) spawnPart(tl[hovIdx], false);
+}
+
+function modeSel(comp) {
+  for (let i=0; i<tl.length; i++) if(i!==selIdx) drawTL(tl[i], i===hovIdx, .15);
+  drawTLSel(tl[selIdx]);
+  drawPyramidFromTL(tl[selIdx], comp);
+  if (frameCount%21===0) spawnPart(tl[selIdx], false);
+}
+
+function modeFull() {
+  for (let i=0; i<tl.length; i++) if(i!==selIdx) drawTL(tl[i], i===hovIdx, .06);
+  drawTLSel(tl[selIdx]);
+  drawPyramidFromTL(tl[selIdx], 1.0);
+  drawGrid(tl[selIdx]);
+  if (frameCount%8===0) spawnPart(tl[selIdx], false);
+}
+
+function modeMatrix() {
+  for (let i=0; i<tl.length; i++) drawTL(tl[i], i===hovIdx, .06);
+  drawTLSel(tl[selIdx]);
+  drawPyramidFromTL(tl[selIdx], 1.0);
+  if (matrixOn && frameCount%13===0 && mThreads.length<89) {
+    let a=random(TWO_PI);
+    let fr=map(emoFreq,0,1,255,120), fg=map(emoFreq,0,1,80,120), fb=map(emoFreq,0,1,80,200);
+    mThreads.push({
+      sx:cos(a)*600, sy:random(-200,300), sz:sin(a)*600,
+      ex:tl[selIdx].x+random(-80,80), ey:200, ez:tl[selIdx].z+random(-80,80),
+      prog:0, breaking:false, r:fr, g:fg, b:fb
+    });
+  }
+  if (frameCount%5===0) spawnPart(tl[selIdx], true);
+}
+
+function modeLiberation() {
+  consLv = min(1, consLv+.004);
+  for (let i=0; i<tl.length; i++) {
+    if (i===selIdx) continue;
+    let t=tl[i], hov=(i===hovIdx);
+    push(); translate(t.x,t.y,t.z);
+    noFill();
+    stroke(150,200,255, consLv*60*(hov?2:1));
+    strokeWeight(1+consLv*(hov?2:1));
+    sphere((3+consLv*2)*(hov?1.5:1));
+    pop();
+  }
+  drawTLSel(tl[selIdx]);
+  drawPyramidFromTL(tl[selIdx], 1.0-consLv*.7);
+  matrixOn=false;
+  for(let m of mThreads) m.breaking=true;
+  if (frameCount%10===0) spawnPart(tl[floor(random(tl.length))], false);
+  push(); noFill();
+  stroke(200,255,240, consLv*35);
+  strokeWeight(1.5);
+  sphere(consLv*700);
+  pop();
+}
+
+// ─── DRAW HELPERS ─────────────────────────────────────────────
+
+function drawTL(t, hov, fade) {
+  push(); translate(t.x, t.y, t.z);
+  let pulse = sin(frameCount*.05+t.phase)*.3+.7;
+  if (hov) pulse*=1.8;
+  let bs = FIB[min(t.fibIdx%8,7)]*.3;
+  noFill();
+  stroke(t.r, t.g, t.b, 150*pulse*fade*(hov?1.5:1));
+  strokeWeight(hov?2.5:1.5);
+  sphere((bs+4)*(hov?1.5:1));
+  // rings — usando ellipse() no circle()
+  rotateY(frameCount*.02);
+  strokeWeight(hov?.8:.4);
+  stroke(t.r, t.g, t.b, 70*pulse*fade*(hov?2:1));
+  let ring = (bs*6+18)*(hov?1.3:1);
+  noFill();
+  ellipse(0, 0, ring, ring);   // ← ellipse, no circle
+  rotateX(HALF_PI);
+  ellipse(0, 0, ring, ring);   // ← ellipse, no circle
+  pop();
+}
+
+function drawTLSel(t) {
+  push(); translate(t.x, t.y, t.z);
+  let pulse = sin(frameCount*.08)*.5+1;
+  noFill(); stroke(255,255,200,200); strokeWeight(2.5);
+  sphere(5*pulse);
+  for (let i=0; i<5; i++) {
+    push();
+    rotateY(frameCount*.03+i*PI/5);
+    rotateX(i*PI/5);
+    strokeWeight(1); stroke(255,255,150,120);
+    let rr=FIB[i+3]*2;
+    ellipse(0, 0, rr, rr);    // ← ellipse, no circle
+    pop();
+  }
+  pop();
+}
+
+function drawPyramidFromTL(t, comp) {
+  drawPyramid(t.x,t.y,t.z, t.x,t.z, 120*PHI, comp, 180,200,255, 170);
+}
+
+function drawPyramid(ax,ay,az, bx,bz, bs, comp, r,g,b, alpha) {
+  let verts = [
+    {x:bx-bs, y:200, z:bz-bs},
+    {x:bx+bs, y:200, z:bz-bs},
+    {x:bx+bs, y:200, z:bz+bs},
+    {x:bx-bs, y:200, z:bz+bs},
+  ];
+  let av = verts.map(v=>({
+    x: ax+(v.x-ax)*comp,
+    y: ay+(v.y-ay)*comp,
+    z: az+(v.z-az)*comp
+  }));
+  noFill();
+  stroke(r, g, b, alpha*glowI*.8);
+  strokeWeight(1.5);
+  for (let v of av) line(ax,ay,az, v.x,v.y,v.z);
+  for (let i=0; i<4; i++) {
+    let n=(i+1)%4;
+    line(av[i].x,av[i].y,av[i].z, av[n].x,av[n].y,av[n].z);
+  }
+  if (comp>.3) {
+    for (let k=1; k<8; k++) {
+      let t2=k/8;
+      let ps=av.map(v=>({
+        x:ax+(v.x-ax)*t2, y:ay+(v.y-ay)*t2, z:az+(v.z-az)*t2
+      }));
+      stroke(200,180,255, map(t2,0,1,8,25)*comp);
+      strokeWeight(.5);
+      for (let i=0;i<4;i++) { let n=(i+1)%4; line(ps[i].x,ps[i].y,ps[i].z,ps[n].x,ps[n].y,ps[n].z); }
+    }
+  }
+}
+
+function drawGrid(t) {
+  push(); translate(t.x,200,t.z);
+  stroke(100,150,200,35); strokeWeight(.5); noFill();
+  for (let i=-10;i<=10;i++) {
+    line(-300,0,i*30, 300,0,i*30);
+    line(i*30,0,-300, i*30,0,300);
+  }
+  pop();
+}
+
+function drawSpirals() {
+  let cols=[[100,150,255],[60,200,220],[180,140,255]];
+  for (let s=0; s<3; s++) {
+    push();
+    rotateY(fibPh*.3 + s*TWO_PI/3);
+    rotateX(fibPh*.2);
+    noFill();
+    stroke(cols[s][0], cols[s][1], cols[s][2], 80);
+    strokeWeight(1.2);
+    beginShape();
+    for (let i=0; i<100; i++) {
+      let a=i*TWO_PI/PHI;
+      let r=FIB[min(i%13,12)]*2;
+      vertex(cos(a)*r, sin(a*PHI)*50, sin(a)*r);
+    }
+    endShape();
+    pop();
+  }
+}
+
+function spawnPart(t, ctrl) {
+  let tx=t.x, ty=200, tz=t.z;
+  let dx=tx-t.x, dy=ty-t.y, dz=tz-t.z;
+  let len=sqrt(dx*dx+dy*dy+dz*dz)||1;
+  let sp=2+random(2);
+  emotions.push({
+    x:t.x, y:t.y, z:t.z,
+    vx:dx/len*sp, vy:dy/len*sp, vz:dz/len*sp,
+    life: FIB[5+floor(random(5))],
+    sz: 2+random(3), ctrl,
+    r: ctrl?200+random(55):150+random(105),
+    g: ctrl?80+random(60):100+random(100),
+    b: ctrl?100+random(60):200+random(55)
+  });
+}
+
+// ─── INPUT ────────────────────────────────────────────────────
+
+function keyPressed() {
+  if (key===' ') {
+    viewMode=(viewMode+1)%5;
+    if(viewMode===3){matrixOn=true; mThreads=[];}
+    if(viewMode===4){consLv=0; matrixOn=false;}
+  }
+  if (key==='r'||key==='R') autoRot=!autoRot;
+  if (key==='s'||key==='S') selIdx=floor(random(tl.length));
+  if (key==='c'||key==='C') { emotions=[]; xPyrs=[]; }
+  if (key==='+'||key==='=') emoFreq=min(1,emoFreq+.05);
+  if (key==='-'||key==='_') emoFreq=max(0,emoFreq-.05);
+  if (key==='b'||key==='B') { for(let m of mThreads) m.breaking=true; matrixOn=false; }
+  if (key==='w'||key==='W') consLv=min(1,consLv+.1);
+  if (key==='f'||key==='F') showFib=!showFib;
+  return false;
+}
+
+function mousePressed() {
+  dragOn=true; lastMX=mouseX; lastMY=mouseY; autoRot=false;
+  let ti=hovIdx>=0?hovIdx:floor(random(tl.length));
+  let t=tl[ti];
+  let maxL=FIB[8+floor(random(5))]*15;
+  xPyrs.push({
+    ax:t.x, ay:t.y, az:t.z, bx:t.x, bz:t.z,
+    bs: 100+random(150),
+    comp:0, speed:.015+random(.02),
+    maxLife:maxL, life:maxL,
+    r:150+random(105), g:120+random(120), b:200+random(55)
+  });
+  if (xPyrs.length>20) xPyrs.shift();
+}
+
+function mouseDragged() {
+  if (dragOn) {
+    camRotY += (mouseX-lastMX)*.005;
+    camRotX = constrain(camRotX+(mouseY-lastMY)*.005, -1.2, 1.2);
+    lastMX=mouseX; lastMY=mouseY;
+  }
+}
+
+function mouseReleased() { dragOn=false; }
+
+// ─── HUD ──────────────────────────────────────────────────────
+
+function updateHUD() {
+  document.getElementById('mode').textContent  = 'Modo: '+MODES[viewMode];
+  document.getElementById('hover').textContent = hovIdx>=0 ? '⚡ HOVER timeline '+hovIdx+' | Glow '+glowI.toFixed(1)+'x' : '';
+  document.getElementById('info').textContent  = 'Pirámides: '+xPyrs.length+' | Fibonacci: '+(showFib?'SÍ':'NO');
+  document.getElementById('freq').textContent  = viewMode===3 ? 'Frec. emocional: '+emoFreq.toFixed(2)+' | Hilos: '+mThreads.length : '';
+  document.getElementById('cons').textContent  = viewMode===4 ? 'Consciencia: '+(consLv*100).toFixed(0)+'%' : '';
+}
 </script>
 </body>
 </html>
