@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>REALIDAD HOLOGRÁFICA – Fibonacci & Proporción Áurea</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #080a0f; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script>
+// ================== REALIDAD HOLOGRÁFICA + FIBONACCI ==================
+// p5.js WEBGL – port fiel de REALIDAD_HOLOGRAFICA_10.pde
+// Cambios clave vs Processing P3D:
+//   • Origen en CENTRO del canvas (sin translate(width/2, height/2))
+//   • stroke(color, alpha) → strokeCA(col, a) helper
+//   • new PVector → createVector
+//   • pushMatrix/popMatrix → push/pop
+//   • HUD via ortho() + translate(-w/2, -h/2)
+
+let timelines   = [];
+let emotions    = [];
+let matrixThreads = [];
+let extraPyramids = [];
+let fibonacciSpirals = [];
+
+let selectedTimeline = null;
+let hoveredTimeline  = null;
+
+let cameraRotY  = 0;
+let cameraRotX  = 0;
+let autoRotate  = true;
+
+let lastMouseX, lastMouseY;
+let dragging = false;
+
+let viewMode = 0;
+
+let emotionalFrequency   = 0.3;
+let matrixControlActive  = true;
+let consciousnessLevel   = 0.0;
+let globalGlowIntensity  = 1.0;
+
+const MAX_EXTRA_PYRAMIDS = 20;
+
+let fibonacci = new Array(20);
+let showFibonacci = true;
+let fibonacciPhase = 0;
+let showHUD = true;
+
+// ─── SETUP ────────────────────────────────────────────────────────────────────
+
+function setup() {
+  createCanvas(windowWidth, windowHeight, WEBGL);
+  textFont('monospace');
+
+  generateFibonacci();
+
+  const phi = 1.618033988749895;
+  for (let i = 0; i < 34; i++) {
+    let angle  = i * TWO_PI / phi;
+    let radius = fibonacci[min(i, 19)] * 2.5;
+    let x = cos(angle) * radius;
+    let y = random(-300, -100);
+    let z = sin(angle) * radius;
+    timelines.push(new Timeline(createVector(x, y, z), i));
+  }
+
+  selectedTimeline = timelines[21];
+  selectedTimeline.select();
+
+  for (let i = 0; i < 3; i++) {
+    fibonacciSpirals.push(new FibonacciSpiral(i * TWO_PI / 3));
+  }
+}
+
+function generateFibonacci() {
+  fibonacci[0] = 1; fibonacci[1] = 1;
+  for (let i = 2; i < fibonacci.length; i++) {
+    fibonacci[i] = fibonacci[i-1] + fibonacci[i-2];
+  }
+}
+
+function windowResized() { resizeCanvas(windowWidth, windowHeight); }
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+// Reemplaza stroke(color, alpha) de Processing (no existe en p5.js)
+function strokeCA(col, a) {
+  stroke(red(col), green(col), blue(col), constrain(a, 0, 255));
+}
+function fillCA(col, a) {
+  fill(red(col), green(col), blue(col), constrain(a, 0, 255));
+}
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+
+function draw() {
+  background(8, 10, 15);
+
+  // Cámara – en WEBGL el origen ya está en el centro, sin offsets width/2
+  let camX = sin(cameraRotY) * 800;
+  let camZ = cos(cameraRotY) * 800;
+  let camY = sin(cameraRotX) * 400 - 100;
+  camera(camX, camY, camZ,  0, -50, 0,  0, 1, 0);
+
+  if (autoRotate) cameraRotY += 0.003;
+  fibonacciPhase += 0.02;
+
+  lights();
+  ambientLight(50, 50, 60);
+
+  detectHover();
+  updateGlowIntensity();
+
+  if (showFibonacci) {
+    for (let s of fibonacciSpirals) { s.update(); s.display(); }
+  }
+
+  if      (viewMode === 0) drawHolographicField();
+  else if (viewMode === 1) drawSelectedProjection();
+  else if (viewMode === 2) drawFullProjection();
+  else if (viewMode === 3) drawEmotionalMatrix();
+  else if (viewMode === 4) drawLiberation();
+
+  for (let i = extraPyramids.length - 1; i >= 0; i--) {
+    extraPyramids[i].update(); extraPyramids[i].display();
+    if (extraPyramids[i].isDead()) extraPyramids.splice(i, 1);
+  }
+  for (let i = emotions.length - 1; i >= 0; i--) {
+    emotions[i].update(); emotions[i].display();
+    if (emotions[i].isDead()) emotions.splice(i, 1);
+  }
+  for (let i = matrixThreads.length - 1; i >= 0; i--) {
+    matrixThreads[i].update(); matrixThreads[i].display();
+    if (matrixThreads[i].isDead()) matrixThreads.splice(i, 1);
+  }
+
+  if (showHUD) drawHUD();
+}
+
+// ─── HOVER ────────────────────────────────────────────────────────────────────
+
+function detectHover() {
+  hoveredTimeline = null;
+  let minD = 50;
+  for (let t of timelines) {
+    let sx = screenX(t.pos.x, t.pos.y, t.pos.z);
+    let sy = screenY(t.pos.x, t.pos.y, t.pos.z);
+    let d  = dist(mouseX, mouseY, sx, sy);
+    if (d < minD) { hoveredTimeline = t; minD = d; }
+  }
+}
+
+function updateGlowIntensity() {
+  let target = hoveredTimeline !== null ? 3.5 : 1.0;
+  globalGlowIntensity = lerp(globalGlowIntensity, target, 0.15);
+}
+
+// ─── MODO 0 – CAMPO HOLOGRÁFICO ───────────────────────────────────────────────
+
+function drawHolographicField() {
+  for (let t of timelines) {
+    let isHov = (t === hoveredTimeline);
+    t.display(isHov);
+    for (let o of timelines) {
+      if (t === o) continue;
+      let d = p5.Vector.dist(t.pos, o.pos);
+      let fi = t.fibIndex % fibonacci.length;
+      let connDist = fibonacci[fi] * 3;
+      if (d < connDist) {
+        let a = map(d, 0, connDist, 30, 0);
+        if (isHov) a *= 2;
+        stroke(80, 120, 160, a);
+        strokeWeight(isHov ? 1.0 : 0.5);
+        line(t.pos.x, t.pos.y, t.pos.z, o.pos.x, o.pos.y, o.pos.z);
+      }
+    }
+  }
+  if (selectedTimeline) selectedTimeline.displaySelected();
+  if (hoveredTimeline && frameCount % 5 === 0) {
+    let ori = hoveredTimeline.pos.copy();
+    let tar = createVector(ori.x + random(-100,100), ori.y + random(50,150), ori.z + random(-100,100));
+    let e = new EmotionParticle(ori, tar);
+    e.col = hoveredTimeline.infoColor;
+    emotions.push(e);
+  }
+}
+
+// ─── MODO 1 – PROYECCIÓN SELECCIONADA ────────────────────────────────────────
+
+function drawSelectedProjection() {
+  for (let t of timelines) {
+    if (t !== selectedTimeline) t.displayFaded(t === hoveredTimeline);
+  }
+  selectedTimeline.displaySelected();
+  selectedTimeline.displayPyramidProjection(0.5);
+  if (frameCount % 21 === 0) {
+    emotions.push(new EmotionParticle(selectedTimeline.pos.copy(), selectedTimeline.getProjectedBase()));
+  }
+}
+
+// ─── MODO 2 – PROYECCIÓN COMPLETA ────────────────────────────────────────────
+
+function drawFullProjection() {
+  for (let t of timelines) {
+    if (t !== selectedTimeline) t.displayVeryFaded(t === hoveredTimeline);
+  }
+  selectedTimeline.displaySelected();
+  selectedTimeline.displayPyramidProjection(1.0);
+  selectedTimeline.displayRealityPlane();
+  if (frameCount % 8 === 0) {
+    emotions.push(new EmotionParticle(selectedTimeline.pos.copy(), selectedTimeline.getProjectedBase()));
+  }
+}
+
+// ─── MODO 3 – MATRIZ EMOCIONAL ───────────────────────────────────────────────
+
+function drawEmotionalMatrix() {
+  for (let t of timelines) t.displayVeryFaded(t === hoveredTimeline);
+  selectedTimeline.displaySelected();
+  selectedTimeline.displayPyramidProjection(1.0);
+
+  if (matrixControlActive && frameCount % 13 === 0 && matrixThreads.length < 89) {
+    let angle  = random(TWO_PI);
+    let dist_  = 600;
+    let ori    = createVector(cos(angle)*dist_, random(-200,300), sin(angle)*dist_);
+    let tar    = selectedTimeline.getProjectedBase();
+    tar.add(createVector(random(-80,80), random(-30,30), random(-80,80)));
+    matrixThreads.push(new MatrixThread(ori, tar, emotionalFrequency));
+  }
+
+  drawEmotionalField();
+
+  if (frameCount % 5 === 0) {
+    let e = new EmotionParticle(selectedTimeline.pos.copy(), selectedTimeline.getProjectedBase());
+    e.setControlled(true);
+    emotions.push(e);
+  }
+}
+
+function drawEmotionalField() {
+  let c = selectedTimeline.getProjectedBase(); c.y -= 100;
+  push();
+  translate(c.x, c.y, c.z);
+  let r = map(emotionalFrequency, 0,1, 255, 80);
+  let g = map(emotionalFrequency, 0,1, 100,150);
+  let b = map(emotionalFrequency, 0,1, 80, 255);
+  noFill(); stroke(r,g,b,40); strokeWeight(1);
+  for (let i = 0; i < 8; i++) {
+    let rad = fibonacci[i+3]*5 + sin(fibonacciPhase+i)*10;
+    sphere(rad);
+  }
+  pop();
+}
+
+// ─── MODO 4 – LIBERACIÓN ─────────────────────────────────────────────────────
+
+function drawLiberation() {
+  consciousnessLevel = constrain(consciousnessLevel + 0.005, 0, 1);
+
+  for (let t of timelines) {
+    if (t === selectedTimeline) continue;
+    let isHov = (t === hoveredTimeline);
+    push();
+    translate(t.pos.x, t.pos.y, t.pos.z);
+    noFill();
+    let a = consciousnessLevel * 0.6 * 80 * (isHov ? 2 : 1);
+    stroke(150, 200, 255, a);
+    strokeWeight((1 + consciousnessLevel) * (isHov ? 2 : 1));
+    sphere((3 + consciousnessLevel*2) * (isHov ? 1.5 : 1));
+    pop();
+  }
+
+  selectedTimeline.displaySelected();
+  selectedTimeline.displayPyramidProjection(1.0 - consciousnessLevel*0.7);
+
+  matrixControlActive = false;
+  for (let m of matrixThreads) m.breaking = true;
+
+  if (frameCount % 34 === 0 && consciousnessLevel > 0.4) {
+    for (let i = 0; i < 3; i++) {
+      let t1 = timelines[int(random(timelines.length))];
+      let t2 = timelines[int(random(timelines.length))];
+      stroke(180, 255, 200, consciousnessLevel*60);
+      strokeWeight(0.5);
+      line(t1.pos.x,t1.pos.y,t1.pos.z, t2.pos.x,t2.pos.y,t2.pos.z);
+    }
+  }
+  if (frameCount % 10 === 0) {
+    for (let i = 0; i < 2; i++) {
+      let rt  = timelines[int(random(timelines.length))];
+      let tar = createVector(random(-300,300), random(100,300), random(-300,300));
+      let e   = new EmotionParticle(rt.pos.copy(), tar);
+      e.setControlled(false);
+      e.col = color(180, 255, 220, 200);
+      emotions.push(e);
+    }
+  }
+  drawConsciousnessField();
+}
+
+function drawConsciousnessField() {
+  push(); translate(0,0,0); noFill();
+  stroke(200, 255, 240, consciousnessLevel*40); strokeWeight(1.5);
+  sphere(consciousnessLevel * 800);
+  let rad0 = consciousnessLevel * 800;
+  for (let i = 0; i < 5; i++) {
+    let pulse = (fibonacciPhase + i * TWO_PI/5) % TWO_PI;
+    let r = sin(pulse) * fibonacci[i+3]*8 + rad0;
+    stroke(220, 255, 200, (1-pulse/TWO_PI)*consciousnessLevel*60);
+    strokeWeight(1); sphere(r);
+  }
+  pop();
+}
+
+// ─── CLASS: FibonacciSpiral ───────────────────────────────────────────────────
+
+class FibonacciSpiral {
+  constructor(offset) {
+    this.rotOffset  = offset;
+    this.scale      = 1.0;
+    this.glowPhase  = random(TWO_PI);
+    this.glowInt    = 1.0;
+    this.col        = color(random(100,180), random(120,200), random(180,255));
+  }
+  update() {
+    this.scale    = 1.0 + sin(fibonacciPhase)*0.2;
+    this.glowPhase += 0.05;
+    this.glowInt  = sin(this.glowPhase)*0.3 + 1.0;
+  }
+  display() {
+    push();
+    rotateY(fibonacciPhase*0.3 + this.rotOffset);
+    rotateX(fibonacciPhase*0.2);
+    const phi = 1.618033988749895;
+    const r = red(this.col), g = green(this.col), b = blue(this.col);
+    const gi = this.glowInt;
+    const sc = this.scale;
+
+    // 4 capas de glow
+    const layers = [
+      { a: 15*gi, w: 8.0*gi },
+      { a: 40*gi, w: 4.0*gi },
+      { a: 80*gi, w: 2.0*gi },
+      { a: 150*gi, w: 1.2  }
+    ];
+    for (let layer of layers) {
+      noFill(); stroke(r,g,b, layer.a); strokeWeight(layer.w);
+      beginShape();
+      for (let i = 0; i < 100; i++) {
+        let angle  = i * TWO_PI / phi;
+        let radius = fibonacci[min(i%13, 12)] * sc * 2;
+        vertex(cos(angle)*radius, sin(angle*phi)*50, sin(angle)*radius);
+      }
+      endShape();
+    }
+    // Puntos de luz
+    for (let i = 0; i < 100; i += 8) {
+      let angle  = i * TWO_PI / phi;
+      let radius = fibonacci[min(i%13,12)] * sc * 2;
+      push();
+      translate(cos(angle)*radius, sin(angle*phi)*50, sin(angle)*radius);
+      let pg = gi * (sin(fibonacciPhase*2 + i*0.1)*0.5 + 1.0);
+      noFill();
+      for (let j = 3; j >= 1; j--) {
+        stroke(r,g,b, (60/j)*pg*globalGlowIntensity);
+        strokeWeight(j*1.5);
+        sphere(fibonacci[3]*0.4*(1+j*0.2));
+      }
+      fill(r,g,b, 200*pg); noStroke(); sphere(fibonacci[2]*0.4);
+      pop();
+    }
+    pop();
+  }
+}
+
+// ─── CLASS: Timeline ─────────────────────────────────────────────────────────
+
+class Timeline {
+  constructor(p, idx) {
+    this.pos       = p;
+    this.selected  = false;
+    this.pulsePhase= random(TWO_PI);
+    this.fibIndex  = idx;
+    let hue = (idx*137.5) % 360;
+    this.infoColor = color(
+      100 + (hue % 155),
+      150 + ((hue*1.2) % 105),
+      200 + ((hue*0.8) % 55)
+    );
+  }
+  select() { this.selected = true; }
+
+  display(isHov) {
+    push(); translate(this.pos.x, this.pos.y, this.pos.z);
+    let pulse = sin(frameCount*0.05 + this.pulsePhase)*0.3 + 0.7;
+    if (isHov) pulse *= 1.8;
+    let baseSize = fibonacci[min(this.fibIndex%8, 7)] * 0.3;
+    noFill();
+    strokeCA(this.infoColor, (150*pulse)*(isHov?1.5:1));
+    strokeWeight(isHov ? 3 : 2);
+    sphere((baseSize+3)*(isHov?1.5:1));
+    rotateY(frameCount*0.02);
+    strokeWeight(isHov ? 1.0 : 0.5);
+    strokeCA(this.infoColor, (80*pulse)*(isHov?2:1));
+    let ring = (baseSize*7+20)*(isHov?1.3:1);
+    ellipse(0,0,ring,ring);
+    rotateX(HALF_PI);
+    ellipse(0,0,ring,ring);
+    pop();
+  }
+
+  displaySelected() {
+    push(); translate(this.pos.x, this.pos.y, this.pos.z);
+    let pulse = sin(frameCount*0.08)*0.5 + 1.0;
+    noFill(); stroke(255,255,200,200); strokeWeight(3); sphere(5*pulse);
+    for (let i = 0; i < 5; i++) {
+      push();
+      rotateY(frameCount*0.03 + i*PI/5);
+      rotateX(i*PI/5);
+      strokeWeight(1); stroke(255,255,150,120);
+      let rr = fibonacci[i+3]*2;
+      ellipse(0,0,rr,rr);
+      pop();
+    }
+    pop();
+  }
+
+  displayFaded(isHov) {
+    push(); translate(this.pos.x, this.pos.y, this.pos.z);
+    noFill(); stroke(100,120,150, isHov?100:40);
+    strokeWeight(isHov?1.5:1); sphere(isHov?3:2); pop();
+  }
+
+  displayVeryFaded(isHov) {
+    push(); translate(this.pos.x, this.pos.y, this.pos.z);
+    noFill(); stroke(80,100,120, isHov?50:15);
+    strokeWeight(isHov?1.0:0.5); sphere(isHov?2.5:1.5); pop();
+  }
+
+  displayPyramidProjection(completion) {
+    let apex = this.pos.copy();
+    let base = this.getProjectedBase();
+    const bs = 120 * 1.618033988749895;
+
+    let v1 = createVector(base.x-bs, base.y, base.z-bs);
+    let v2 = createVector(base.x+bs, base.y, base.z-bs);
+    let v3 = createVector(base.x+bs, base.y, base.z+bs);
+    let v4 = createVector(base.x-bs, base.y, base.z+bs);
+
+    v1 = p5.Vector.lerp(apex,v1,completion);
+    v2 = p5.Vector.lerp(apex,v2,completion);
+    v3 = p5.Vector.lerp(apex,v3,completion);
+    v4 = p5.Vector.lerp(apex,v4,completion);
+
+    stroke(180,200,255,150); strokeWeight(1.5);
+    line(apex.x,apex.y,apex.z, v1.x,v1.y,v1.z);
+    line(apex.x,apex.y,apex.z, v2.x,v2.y,v2.z);
+    line(apex.x,apex.y,apex.z, v3.x,v3.y,v3.z);
+    line(apex.x,apex.y,apex.z, v4.x,v4.y,v4.z);
+    line(v1.x,v1.y,v1.z, v2.x,v2.y,v2.z);
+    line(v2.x,v2.y,v2.z, v3.x,v3.y,v3.z);
+    line(v3.x,v3.y,v3.z, v4.x,v4.y,v4.z);
+    line(v4.x,v4.y,v4.z, v1.x,v1.y,v1.z);
+
+    if (completion > 0.3) this._emotionalFill(apex,v1,v2,v3,v4,completion);
+  }
+
+  _emotionalFill(apex, v1, v2, v3, v4, completion) {
+    for (let i = 0; i < 13; i++) {
+      let t  = i / 13;
+      let p1 = p5.Vector.lerp(apex,v1,t);
+      let p2 = p5.Vector.lerp(apex,v2,t);
+      let p3 = p5.Vector.lerp(apex,v3,t);
+      let p4 = p5.Vector.lerp(apex,v4,t);
+      let a  = map(t,0,1,10,40)*completion;
+      stroke(200, 150+t*80, 255-t*100, a); strokeWeight(0.5);
+      line(p1.x,p1.y,p1.z, p2.x,p2.y,p2.z);
+      line(p2.x,p2.y,p2.z, p3.x,p3.y,p3.z);
+      line(p3.x,p3.y,p3.z, p4.x,p4.y,p4.z);
+      line(p4.x,p4.y,p4.z, p1.x,p1.y,p1.z);
+    }
+  }
+
+  displayRealityPlane() {
+    let base = this.getProjectedBase();
+    push(); translate(base.x, base.y, base.z);
+    stroke(100,150,200,40); strokeWeight(0.5); noFill();
+    const gs = 600, div = 21, step = gs/div;
+    for (let i = -floor(div/2); i <= floor(div/2); i++) {
+      line(-gs/2,0,i*step,  gs/2,0,i*step);
+      line(i*step,0,-gs/2,  i*step,0,gs/2);
+    }
+    pop();
+  }
+
+  getProjectedBase() { return createVector(this.pos.x, 200, this.pos.z); }
+}
+
+// ─── CLASS: ExtraPyramid ─────────────────────────────────────────────────────
+
+class ExtraPyramid {
+  constructor(src) {
+    this.source   = src;
+    const phi     = 1.618033988749895;
+    this.baseScale= random(0.8*phi, 2.0/phi);
+    this.hOff     = random(-80, 80);
+    this.col      = color(random(150,255), random(120,240), random(200,255), 200);
+    this.comp     = 0;
+    this.speed    = random(0.01, 0.03);
+    let fibL      = fibonacci[int(random(8, 13))];
+    this.maxLife  = fibL * 20;
+    this.life     = this.maxLife;
+  }
+  update() {
+    this.comp = constrain(this.comp + this.speed, 0, 1);
+    this.life--;
+  }
+  display() {
+    if (!this.source) return;
+    let apex = this.source.pos.copy();
+    let base = this.source.getProjectedBase(); base.y += this.hOff;
+    const bs = 150 * this.baseScale;
+
+    let v1 = p5.Vector.lerp(apex, createVector(base.x-bs,base.y,base.z-bs), this.comp);
+    let v2 = p5.Vector.lerp(apex, createVector(base.x+bs,base.y,base.z-bs), this.comp);
+    let v3 = p5.Vector.lerp(apex, createVector(base.x+bs,base.y,base.z+bs), this.comp);
+    let v4 = p5.Vector.lerp(apex, createVector(base.x-bs,base.y,base.z+bs), this.comp);
+
+    let af = map(this.life, 0, this.maxLife, 0, 1);
+    let a  = alpha(this.col) * af;
+    let r  = red(this.col), g = green(this.col), b = blue(this.col);
+
+    stroke(r,g,b,a); strokeWeight(3.0);
+    line(apex.x,apex.y,apex.z, v1.x,v1.y,v1.z);
+    line(apex.x,apex.y,apex.z, v2.x,v2.y,v2.z);
+    line(apex.x,apex.y,apex.z, v3.x,v3.y,v3.z);
+    line(apex.x,apex.y,apex.z, v4.x,v4.y,v4.z);
+    line(v1.x,v1.y,v1.z, v2.x,v2.y,v2.z);
+    line(v2.x,v2.y,v2.z, v3.x,v3.y,v3.z);
+    line(v3.x,v3.y,v3.z, v4.x,v4.y,v4.z);
+    line(v4.x,v4.y,v4.z, v1.x,v1.y,v1.z);
+
+    for (let i = 1; i < 8; i++) {
+      let t  = i/8;
+      let p1 = p5.Vector.lerp(apex,v1,t), p2 = p5.Vector.lerp(apex,v2,t);
+      let p3 = p5.Vector.lerp(apex,v3,t), p4 = p5.Vector.lerp(apex,v4,t);
+      stroke(r,g,b, a*map(t,0,1,0.2,0.7)); strokeWeight(1.2);
+      line(p1.x,p1.y,p1.z, p2.x,p2.y,p2.z);
+      line(p2.x,p2.y,p2.z, p3.x,p3.y,p3.z);
+      line(p3.x,p3.y,p3.z, p4.x,p4.y,p4.z);
+      line(p4.x,p4.y,p4.z, p1.x,p1.y,p1.z);
+    }
+  }
+  isDead() { return this.life <= 0; }
+}
+
+// ─── CLASS: EmotionParticle ──────────────────────────────────────────────────
+
+class EmotionParticle {
+  constructor(apex, base) {
+    this.pos = apex.copy();
+    this.vel = p5.Vector.sub(base, apex);
+    this.vel.normalize(); this.vel.mult(random(2,4));
+    this.lifespan = fibonacci[int(random(5,10))];
+    this.size     = random(2,5);
+    this.controlled = false;
+    this.col = color(random(150,255), random(100,200), random(200,255), 150);
+  }
+  setControlled(c) {
+    this.controlled = c;
+    if (c) this.col = color(random(200,255), random(80,140), random(100,160), 180);
+  }
+  update() {
+    let turb = this.controlled ? 0.2 : 0.5;
+    this.vel.add(createVector(
+      (noise(this.pos.x*0.01, frameCount*0.01)-0.5)*turb,
+      this.controlled ? 0.15 : -0.05,
+      (noise(this.pos.z*0.01, frameCount*0.01)-0.5)*turb
+    ));
+    this.vel.mult(this.controlled ? 0.95 : 0.98);
+    this.pos.add(this.vel);
+    this.lifespan -= 1;
+    this.size += this.controlled ? 0.03 : 0.08;
+  }
+  display() {
+    push(); translate(this.pos.x, this.pos.y, this.pos.z);
+    let ga = constrain(this.lifespan * globalGlowIntensity, 0, 255);
+    let r  = red(this.col), g = green(this.col), b = blue(this.col);
+    noFill();
+    for (let i = 3; i >= 1; i--) {
+      stroke(r,g,b, ga/(i*1.5));
+      strokeWeight(i*1.2*(globalGlowIntensity*0.4));
+      sphere(this.size*(1+i*0.3));
+    }
+    stroke(r,g,b,ga); strokeWeight(1.5); sphere(this.size);
+    let dir = p5.Vector.sub(p5.Vector.sub(this.pos, p5.Vector.mult(this.vel,3)), this.pos);
+    for (let i = 3; i >= 1; i--) {
+      stroke(r,g,b, ga*(0.25+0.15*i));
+      strokeWeight((0.7+0.6*i)*globalGlowIntensity);
+      line(0,0,0, dir.x,dir.y,dir.z);
+    }
+    pop();
+  }
+  isDead() { return this.lifespan <= 0; }
+}
+
+// ─── CLASS: MatrixThread ─────────────────────────────────────────────────────
+
+class MatrixThread {
+  constructor(s, e, freq) {
+    this.start = s.copy(); this.end = e.copy(); this.current = s.copy();
+    this.progress = 0; this.freq = freq;
+    this.breaking = false; this.breakProg = 0;
+    let r = map(freq,0,1,255,120), g = map(freq,0,1,80,120), b = map(freq,0,1,80,200);
+    this.col = color(r,g,b,120);
+  }
+  update() {
+    if (this.breaking) {
+      this.breakProg += 0.02;
+      this.progress   = max(0, this.progress - 0.03);
+    } else {
+      this.progress = constrain(this.progress + 0.02, 0, 1);
+    }
+    this.current = p5.Vector.lerp(this.start, this.end, this.progress);
+  }
+  display() {
+    if (this.progress <= 0) return;
+    let r = red(this.col), g = green(this.col), b = blue(this.col);
+    let base = alpha(this.col);
+    let a = this.breaking ? map(this.breakProg,0,1,base,0) : base;
+    a *= globalGlowIntensity * 0.6;
+    stroke(r,g,b,a); strokeWeight(this.breaking?0.5:1.0);
+    line(this.start.x,this.start.y,this.start.z, this.current.x,this.current.y,this.current.z);
+    if (!this.breaking) {
+      for (let i = 0; i < 5; i++) {
+        let t  = (fibonacciPhase*0.5 + i*0.2) % 1.0;
+        let pp = p5.Vector.lerp(this.start, this.current, t);
+        push(); translate(pp.x,pp.y,pp.z);
+        noFill(); stroke(r,g,b, a*0.8);
+        sphere(fibonacci[i+2]*0.5*(globalGlowIntensity*0.5));
+        pop();
+      }
+    }
+  }
+  isDead() { return this.breaking && this.progress <= 0; }
+}
+
+// ─── HUD ─────────────────────────────────────────────────────────────────────
+
+function drawHUD() {
+  push();
+  noLights();
+  ortho();                         // proyección ortográfica (sin perspectiva)
+  translate(-width/2, -height/2);  // origen → esquina superior izquierda
+
+  fill(200,220,255); noStroke();
+  textAlign(LEFT, TOP); textSize(14);
+  text("REALIDAD HOLOGRÁFICA – Fibonacci & Proporción Áurea (PIRÁMIDES 4 LADOS)", 20, 20);
+
+  textSize(11);
+  text("ESPACIO: cambiar modo de visualización",       20, 50);
+  text("R: activar/desactivar rotación automática",    20, 65);
+  text("S: seleccionar línea de tiempo aleatoria",     20, 80);
+  text("C: limpiar emociones y pirámides extra",       20, 95);
+  text("+/- : ajustar frecuencia emocional (Modo 3)",  20,110);
+  text("B: romper hilos de matriz",                    20,125);
+  text("W: acelerar nivel de consciencia (Modo 4)",    20,140);
+  text("F: mostrar/ocultar espirales de Fibonacci",    20,155);
+  text("H: mostrar/ocultar HUD",                       20,170);
+  text("CLICK + DRAG: rotar cámara / CLICK: pirámide", 20,185);
+
+  const modos = [
+    "CAMPO HOLOGRÁFICO (todas las líneas potenciales)",
+    "SELECCIÓN (línea elegida + inicio proyección)",
+    "PROYECCIÓN COMPLETA (pirámide + emociones + realidad)",
+    "MATRIZ EMOCIONAL (hilos de control + anclaje)",
+    "LIBERACIÓN (consciencia expandida + ruptura de matriz)"
+  ];
+  textSize(12); fill(255,255,150);
+  text("Modo: " + modos[viewMode], 20, 210);
+
+  if (hoveredTimeline !== null) {
+    fill(255,200,100);
+    text("⚡ HOVER ACTIVO – Glow: " + nf(globalGlowIntensity,1,2) + "x", 20, 230);
+  }
+  fill(180,220,255);
+  text("Pirámides extra (4 lados): " + extraPyramids.length,       20, 250);
+  text("Secuencia Fibonacci activa: " + (showFibonacci?"SÍ":"NO"), 20, 265);
+
+  if (viewMode === 3) {
+    fill(255,150,150);
+    text("Frecuencia emocional: " + nf(emotionalFrequency,1,2), 20, 285);
+    text("Hilos activos: " + matrixThreads.length,              20, 300);
+  }
+  if (viewMode === 4) {
+    fill(150,255,200);
+    text("Nivel de consciencia: " + nf(consciousnessLevel*100,1,1) + "%", 20, 285);
+    text("Estado: " + getConsciousnessState(consciousnessLevel),           20, 300);
+  }
+
+  textSize(10); fill(180,200,255,180);
+  text("FIBONACCI & PROPORCIÓN ÁUREA:",                    width-380, 20);
+  text("• 34 líneas de tiempo (Fibonacci)",                width-380, 40);
+  text("• Distribución espacial basada en φ (1.618...)",  width-380, 55);
+  text("• Espirales que siguen la secuencia natural",      width-380, 70);
+  text("• Conexiones y radios proporcionales",             width-380, 85);
+  text("• Ángulo áureo (137.5°) para colores",            width-380,100);
+  text("• Ritmos temporales en nros de Fibonacci",         width-380,115);
+  text("• Secuencia: 1,1,2,3,5,8,13,21,34,55,89...",     width-380,130);
+  text("• PIRÁMIDES DE BASE CUADRADA (4 LADOS)",           width-380,145);
+  pop();
+}
+
+function getConsciousnessState(lv) {
+  if (lv < 0.2) return "Dormido (matriz activa)";
+  if (lv < 0.4) return "Despertando (cuestionamiento)";
+  if (lv < 0.6) return "Consciente (observando patrones)";
+  if (lv < 0.8) return "Integrado (dominio emocional)";
+  return "Liberado (creación intencional)";
+}
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+
+function keyPressed() {
+  if (key === ' ') {
+    viewMode = (viewMode + 1) % 5;
+    if (viewMode === 3) { matrixControlActive = true; matrixThreads = []; }
+    if (viewMode === 4) { consciousnessLevel = 0; matrixControlActive = false; }
+  }
+  if (key==='r'||key==='R') autoRotate = !autoRotate;
+  if (key==='s'||key==='S') {
+    selectedTimeline = timelines[int(random(timelines.length))];
+    selectedTimeline.select();
+  }
+  if (key==='c'||key==='C') { emotions=[]; extraPyramids=[]; }
+  if (key==='+'||key==='=') emotionalFrequency = constrain(emotionalFrequency+0.05,0,1);
+  if (key==='-'||key==='_') emotionalFrequency = constrain(emotionalFrequency-0.05,0,1);
+  if (key==='b'||key==='B') { for(let m of matrixThreads) m.breaking=true; matrixControlActive=false; }
+  if (key==='w'||key==='W') consciousnessLevel = constrain(consciousnessLevel+0.1,0,1);
+  if (key==='f'||key==='F') showFibonacci = !showFibonacci;
+  if (key==='h'||key==='H') showHUD = !showHUD;
+}
+
+function mousePressed() {
+  dragging = true; lastMouseX = mouseX; lastMouseY = mouseY;
+  let base = hoveredTimeline !== null ? hoveredTimeline : timelines[int(random(timelines.length))];
+  extraPyramids.push(new ExtraPyramid(base));
+  if (extraPyramids.length > MAX_EXTRA_PYRAMIDS) extraPyramids.shift();
+}
+
+function mouseDragged() {
+  if (dragging) {
+    cameraRotY += (mouseX - lastMouseX) * 0.005;
+    cameraRotX += (mouseY - lastMouseY) * 0.005;
+    cameraRotX  = constrain(cameraRotX, -HALF_PI*0.8, HALF_PI*0.8);
+    lastMouseX = mouseX; lastMouseY = mouseY;
+    autoRotate = false;
+  }
+}
+
+function mouseReleased() { dragging = false; }
+</script>
+</body>
+</html>
