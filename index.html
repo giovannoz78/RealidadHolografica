@@ -515,7 +515,7 @@ document.addEventListener('keydown', e=>{
   if(k==='+'||k==='=') emoFreq=Math.min(1,emoFreq+.05);
   if(k==='-'||k==='_') emoFreq=Math.max(0,emoFreq-.05);
   if(k==='b'||k==='B'){for(const m of mThreads)m.breaking=true;matrixOn=false;}
-  if(k==='w'||k==='W') consLv=Math.min(1,consLv+.1);
+  if(k==='w'||k==='W') { viewMode=4; matrixOn=false; consLv=Math.min(1,consLv+.1); }
   if(k==='f'||k==='F') showFib=!showFib;
 });
 
