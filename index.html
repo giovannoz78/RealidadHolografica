@@ -456,6 +456,7 @@ function modeSel(comp) {
   for(let i=0;i<TL.length;i++) if(i!==selIdx) drawTL(TL[i],i===hovIdx,0.2);
   drawTLSel(TL[selIdx]);
   drawPyramidFromTL(TL[selIdx],comp);
+  drawPyramidMirror(TL[selIdx],comp);
   if(frame%15===0) spawnPart(TL[selIdx],false);
   const si=Math.max(1,Math.round(map(emoFreq,0,1,14,2)/partDensity));
   if(frame%si===0) spawnPyramidEdgeParts(TL[selIdx],comp);
@@ -735,6 +736,95 @@ function drawPyramidFromTL(t,comp) {
   drawPyramid(t.x,t.y,t.z,t.x,t.z,120*PHI,comp,180,200,255,200);
 }
 
+
+// ── PIRÁMIDE ESPEJO (invertida, reflejada en y=200) ────────────
+function drawPyramidMirror(t, comp, bsOverride) {
+  const ax=t.x, az=t.z;
+  const ay_orig = t.y;
+  const base_y  = 200;
+  const bs      = bsOverride !== undefined ? bsOverride : 120*PHI;
+
+  // Ápice reflejado: mismo x,z pero y espejada respecto a base_y
+  const ay_mirror = base_y + (base_y - ay_orig);  // = 400 - ay_orig
+
+  const corners = [
+    [ax-bs, base_y, az-bs], [ax+bs, base_y, az-bs],
+    [ax+bs, base_y, az+bs], [ax-bs, base_y, az+bs]
+  ];
+
+  // Aplicar comp igual que drawPyramid pero desde el ápice espejo
+  const av = corners.map(v => [
+    ax      + (v[0] - ax)      * comp,
+    base_y  + (v[1] - base_y)  * comp,   // base no se mueve (es el plano de reflejo)
+    az      + (v[2] - az)      * comp
+  ]);
+  // El ápice espejo también se interpola desde la base
+  const apex = [
+    ax,
+    base_y + (ay_mirror - base_y) * comp,
+    az
+  ];
+
+  // Color ligeramente diferente — violeta/magenta para distinguirlo
+  const pal = PALETTES[viewMode];
+  const hue = ((pal.hueShift + 180) % 360 + 360) % 360;
+  const [mr,mg,mb] = hslToRgb(hue/360, pal.sat, Math.min(1, pal.light + 0.1));
+  const alpha = (160/255) * glowI * 0.85;
+
+  ctx.strokeStyle = `rgba(${mr|0},${mg|0},${mb|0},${Math.min(1,alpha)})`;
+  ctx.lineWidth   = 1.4;
+
+  // Aristas laterales (base → ápice espejo)
+  for (const v of av) {
+    const p1=project(apex[0],apex[1],apex[2]);
+    const p2=project(v[0],v[1],v[2]);
+    if (!p1||!p2) continue;
+    ctx.beginPath(); ctx.moveTo(p1.sx,p1.sy); ctx.lineTo(p2.sx,p2.sy); ctx.stroke();
+  }
+  // Aristas de base (compartida con pirámide normal)
+  for (let i=0; i<4; i++) {
+    const n=(i+1)%4;
+    const p1=project(av[i][0],av[i][1],av[i][2]);
+    const p2=project(av[n][0],av[n][1],av[n][2]);
+    if (!p1||!p2) continue;
+    ctx.beginPath(); ctx.moveTo(p1.sx,p1.sy); ctx.lineTo(p2.sx,p2.sy); ctx.stroke();
+  }
+
+  // Partículas inline — color complementario, viajan del ápice espejo a la base
+  const pSpeed = map(emoFreq,0,1,0.005,0.020)*partSpeed;
+  const ph3    = (frame*pSpeed*0.9 + 0.25) % 1.0;  // fase diferente a la normal
+  for (let i=0; i<4; i++) {
+    for (let k=0; k<3; k++) {
+      const t2 = (ph3 + k/3) % 1.0;
+      const px = apex[0] + (av[i][0]-apex[0])*t2;
+      const py = apex[1] + (av[i][1]-apex[1])*t2;
+      const pz = apex[2] + (av[i][2]-apex[2])*t2;
+      glowDot3(px, py, pz, 4.5, mr, mg, mb, Math.sin(t2*Math.PI)*0.88);
+    }
+  }
+
+  // Secciones internas espejo
+  if (comp > 0.3) {
+    for (let k=1; k<6; k++) {
+      const t2=k/6;
+      const ps = av.map(v=>[
+        apex[0]+(v[0]-apex[0])*t2,
+        apex[1]+(v[1]-apex[1])*t2,
+        apex[2]+(v[2]-apex[2])*t2
+      ]);
+      ctx.strokeStyle=`rgba(${mr|0},${mg|0},${mb|0},${map(t2,0,1,.05,.16)*comp})`;
+      ctx.lineWidth=.6;
+      for (let i=0;i<4;i++){
+        const ni=(i+1)%4;
+        const p1=project(ps[i][0],ps[i][1],ps[i][2]);
+        const p2=project(ps[ni][0],ps[ni][1],ps[ni][2]);
+        if (!p1||!p2) continue;
+        ctx.beginPath(); ctx.moveTo(p1.sx,p1.sy); ctx.lineTo(p2.sx,p2.sy); ctx.stroke();
+      }
+    }
+  }
+}
+
 function drawPyramid(ax,ay,az,bx,bz,bs,comp,r,g,b,alpha) {
   const base_y=200;
   const corners=[[bx-bs,base_y,bz-bs],[bx+bs,base_y,bz-bs],[bx+bs,base_y,bz+bs],[bx-bs,base_y,bz+bs]];
@@ -925,7 +1015,13 @@ function drawExtras() {
   for(let i=xPyrs.length-1;i>=0;i--){
     const ep=xPyrs[i]; ep.comp=Math.min(1,ep.comp+ep.speed); ep.life--;
     if(ep.life<=0){ xPyrs.splice(i,1); continue; }
-    drawPyramid(ep.ax,ep.ay,ep.az,ep.bx,ep.bz,ep.bs*ep.comp,(ep.life/ep.maxLife)*.9,ep.r,ep.g,ep.b,200);
+    const af=(ep.life/ep.maxLife)*.9;
+    drawPyramid(ep.ax,ep.ay,ep.az,ep.bx,ep.bz,ep.bs*ep.comp,af,ep.r,ep.g,ep.b,200);
+    // Pirámide espejo solo en Modo 1
+    if(viewMode===1){
+      const fakeT = { x:ep.ax, y:ep.ay, z:ep.az, fibIdx:0, phase:ep.ax*0.01 };
+      drawPyramidMirror(fakeT, ep.comp * af, ep.bs);
+    }
   }
 }
 
