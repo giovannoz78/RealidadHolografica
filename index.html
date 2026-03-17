@@ -111,6 +111,7 @@ let showFib=true;
 let partSpeed=0.5;   // ←→  rango 0.1–2.0  (default suave)
 let partDensity=0.5; // ↑↓  rango 0.1–2.0  (default moderado)
 let hudVisible=true;
+let selFlash=0;  // frames de flash al cambiar selIdx
 const emotions=[], mThreads=[], xPyrs=[];
 
 const TL=[];
@@ -370,6 +371,23 @@ function loop() {
     TL[i].r += (TL[i].tr - TL[i].r) * LERP;
     TL[i].g += (TL[i].tg - TL[i].g) * LERP;
     TL[i].b += (TL[i].tb - TL[i].b) * LERP;
+  }
+
+  // Flash visual al cambiar de nodo seleccionado
+  if(selFlash>0){
+    selFlash--;
+    const ft=selFlash/40;
+    const fp=project(TL[selIdx].x,TL[selIdx].y,TL[selIdx].z);
+    if(fp){
+      const fr=80+Math.round(ft*120);
+      ctx.globalAlpha=ft*0.9;
+      ctx.strokeStyle=`rgb(255,255,180)`;
+      ctx.lineWidth=3;
+      ctx.beginPath();
+      ctx.arc(fp.sx,fp.sy,fr,0,Math.PI*2);
+      ctx.stroke();
+      ctx.globalAlpha=1;
+    }
   }
 
   if(showFib) drawSpirals();
@@ -1045,7 +1063,14 @@ document.addEventListener('keydown',e=>{
 
   if(k===' '){ initAudio(); viewMode=(viewMode+1)%5; if(viewMode===3){matrixOn=true;mThreads.length=0;} if(viewMode===4){consLv=0;matrixOn=false;} updatePaletteTargets(); }
   if(k==='r'||k==='R') autoRot=!autoRot;
-  if(k==='s'||k==='S') selIdx=Math.floor(Math.random()*15);
+  if(k==='s'||k==='S'){
+    selIdx=Math.floor(Math.random()*15);
+    selFlash=40;
+    // Burst de partículas desde el nuevo nodo
+    for(let k2=0;k2<8;k2++) spawnPart(TL[selIdx],false);
+    // Si estamos en modo 0, saltar a modo 1 para ver la pirámide
+    if(viewMode===0){ viewMode=1; updatePaletteTargets(); }
+  }
   if(k==='c'||k==='C'){ emotions.length=0;xPyrs.length=0; }
 
   const isPlus =k==='+'||k==='='||c==='Equal'||c==='NumpadAdd'||c==='BracketRight';
