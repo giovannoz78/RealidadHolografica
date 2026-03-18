@@ -42,7 +42,7 @@ canvas { position:fixed; top:0; left:0; z-index:1; }
 <canvas id="c"></canvas>
 <div id="hud">
   <h2>REALIDAD HOLOGRÁFICA – Fibonacci &amp; Proporción Áurea</h2>
-  <div>ESPACIO: modo | R: rotación | S: timeline | C: limpiar | F: Fibonacci | H: HUD | P: captura</div>
+  <div>ESPACIO: modo | R: rotación | S: TL | C: limpiar | F: Fibonacci | T: IDs nodos | H: HUD | P: captura</div>
   <div>+/-: frecuencia | ←→: velocidad partículas | ↑↓: cantidad partículas</div>
   <div>B: romper hilos | W: consciencia (Modo 4) | DRAG: orbitar | CLICK: pirámide</div>
   <div id="mode">Modo: CAMPO HOLOGRÁFICO</div>
@@ -71,20 +71,20 @@ const MODES = ["CAMPO HOLOGRÁFICO","PROYECCIÓN SELECCIONADA","PROYECCIÓN COMP
 // Cada paleta: { hueShift, sat, light, hueCompress }
 // hueCompress: 1=arcoiris completo, <1=comprimir hacia un tono central
 const PALETTES = [
-  { hueShift:0,   sat:0.85, light:0.72, compress:1.0,  name:"Arcoiris Fibonacci"   }, // 0 Campo
-  { hueShift:200, sat:0.90, light:0.65, compress:0.35, name:"Azul Cuántico"         }, // 1 Proyección sel.
-  { hueShift:130, sat:0.95, light:0.62, compress:0.40, name:"Esmeralda Geométrica"  }, // 2 Proyección comp.
-  { hueShift:320, sat:1.00, light:0.58, compress:0.45, name:"Rojo Emocional"        }, // 3 Matriz
-  { hueShift:45,  sat:0.70, light:0.88, compress:0.30, name:"Dorado Transcendente"  }, // 4 Liberación
+  { hueShift:0,   sat:1.00, light:0.55, compress:1.0,  name:"Arcoiris Fibonacci"   }, // 0 Campo
+  { hueShift:200, sat:1.00, light:0.55, compress:0.35, name:"Azul Cuántico"         }, // 1 Proyección sel.
+  { hueShift:130, sat:1.00, light:0.55, compress:0.40, name:"Esmeralda Geométrica"  }, // 2 Proyección comp.
+  { hueShift:320, sat:1.00, light:0.55, compress:0.45, name:"Rojo Emocional"        }, // 3 Matriz
+  { hueShift:45,  sat:1.00, light:0.55, compress:0.30, name:"Dorado Transcendente"  }, // 4 Liberación
 ];
 
 // Función: dado el fibIdx y la paleta, devuelve [r,g,b] objetivo
 function paletteColor(fibIdx, pal) {
   const baseHue = (fibIdx * 137.5) % 360;
-  // comprimir el arcoiris hacia el hueShift central
   const compressed = pal.hueShift + (baseHue - 180) * pal.compress;
   const h = ((compressed % 360) + 360) % 360;
-  return hslToRgb(h/360, pal.sat, pal.light);
+  // sat y light al máximo para colores puros y vivos
+  return hslToRgb(h/360, 1.0, 0.55);  // 0.55 = máximo cromatismo en HSL
 }
 
 // Qué controla +/- en cada modo — visible en HUD
@@ -119,7 +119,7 @@ for (let i=0;i<34;i++) {
   const angle=i*Math.PI*2/PHI;
   const radius=FIB[Math.min(i,19)]*2.5;
   const hue=(i*137.5)%360;
-  const [r,g,b]=hslToRgb(hue/360,0.85,0.72);
+  const [r,g,b]=hslToRgb(hue/360,1.0,0.55);
   TL.push({ x:Math.cos(angle)*radius, y:-150+(Math.random()*80-40), z:Math.sin(angle)*radius,
             r,g,b,          // color actual (se lerp cada frame)
             tr:r,tg:g,tb:b, // color objetivo (se actualiza al cambiar modo)
@@ -350,10 +350,39 @@ function takeScreenshot() {
   link.click();
 }
 
+
+// ── LABELS DE NODOS ───────────────────────────────────────────
+let showLabels = false;
+
+function drawNodeLabels() {
+  if (!showLabels) return;
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  for (let i = 0; i < TL.length; i++) {
+    const t = TL[i];
+    const p = project(t.x, t.y, t.z);
+    if (!p) continue;
+    const isSelected = (i === selIdx);
+    const fib = FIB[Math.min(i, 19)];
+    // Fondo semitransparente
+    const label = `${i} · fib:${fib}`;
+    const w = ctx.measureText(label).width + 8;
+    ctx.globalAlpha = 0.75;
+    ctx.fillStyle = isSelected ? '#2a2000' : '#0a1020';
+    ctx.fillRect(p.sx - w/2, p.sy - 22, w, 14);
+    // Texto
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = isSelected ? '#ffee44' : `rgb(${t.r|0},${t.g|0},${t.b|0})`;
+    ctx.fillText(label, p.sx, p.sy - 11);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
 // ── LOOP ───────────────────────────────────────────────────────
 function loop() {
   requestAnimationFrame(loop);
-  frame++; fibPh+=0.02;
+  frame++; fibPh+=0.008;
   if (autoRot) camY+=0.003;
   ctx.fillStyle='rgba(6,8,16,0.88)'; ctx.fillRect(0,0,C.width,C.height);
 
@@ -397,7 +426,7 @@ function loop() {
   else if(viewMode===3) modeMatrix();
   else if(viewMode===4) modeLiberation();
 
-  drawExtras(); drawParticles(); drawThreads(); tickAudio(); updateHUD();
+  drawNodeLabels(); drawExtras(); drawParticles(); drawThreads(); tickAudio(); updateHUD();
 }
 
 // ── MODO 0: emoFreq → distancia de conexión (más = más red) ───
@@ -429,8 +458,8 @@ function modeField() {
       const px= mv[0]*cY2+mv[2]*sY2;
       const pz=-mv[0]*sY2+mv[2]*cY2;
       const fy= mv[1]*cX2-pz*sX2;
-      const alpha=(hov?180:80);
-      stroke3(t.x,t.y,t.z, px,fy,pz, t.r,t.g,t.b, alpha, hov?1.4:0.7);
+      const alpha=(hov?220:130);
+      stroke3(t.x,t.y,t.z, px,fy,pz, t.r,t.g,t.b, alpha, hov?1.8:1.0);
     }
     // Conexiones entre nodos del mismo vértice macro
     for(let j=i+1;j<TL.length;j++){
@@ -696,10 +725,10 @@ function drawMacroIcosahedron() {
   // Vértices del macro con pequeño glow
   for (const p of vp) {
     if (!p) continue;
-    ctx.globalAlpha = 0.55 + pulse * 0.35;
+    ctx.globalAlpha = 0.80 + pulse * 0.20;
     ctx.fillStyle   = `rgb(${cr|0},${cg|0},${cb|0})`;
     ctx.beginPath();
-    ctx.arc(p.sx, p.sy, 2.5, 0, Math.PI * 2);
+    ctx.arc(p.sx, p.sy, 3.5, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
@@ -1152,7 +1181,7 @@ document.addEventListener('touchmove',e=>{
 
 document.addEventListener('keydown',e=>{
   const k=e.key,c=e.code;
-  const appKeys=[' ','r','R','s','S','c','C','b','B','w','W','f','F','h','H','p','P','+','=','-','_'];
+  const appKeys=[' ','r','R','s','S','c','C','b','B','w','W','f','F','h','H','p','P','t','T','+','=','-','_'];
   const appCodes=['Equal','Minus','NumpadAdd','NumpadSubtract','BracketRight','Slash',
                   'ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
   if(appKeys.includes(k)||appCodes.includes(c)) e.preventDefault();
@@ -1183,6 +1212,7 @@ document.addEventListener('keydown',e=>{
   if(k==='b'||k==='B'){ for(const m of mThreads) m.breaking=true;matrixOn=false; }
   if(k==='w'||k==='W'){ viewMode=4;matrixOn=false;consLv=Math.min(1,consLv+.1); }
   if(k==='f'||k==='F') showFib=!showFib;
+  if(k==='t'||k==='T') showLabels=!showLabels;
   if(k==='p'||k==='P') takeScreenshot();
   if(k==='h'||k==='H'){
     hudVisible=!hudVisible;
