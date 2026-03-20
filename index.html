@@ -1080,10 +1080,33 @@ function drawThreads() {
     const m=mThreads[i];
     if(m.breaking) m.prog=Math.max(0,m.prog-.03); else m.prog=Math.min(1,m.prog+.02);
     if(m.breaking&&m.prog<=0){ mThreads.splice(i,1); continue; }
-    const cx=m.sx+(m.ex-m.sx)*m.prog,cy=m.sy+(m.ey-m.sy)*m.prog,cz=m.sz+(m.ez-m.sz)*m.prog;
-    stroke3(m.sx,m.sy,m.sz,cx,cy,cz,m.r,m.g,m.b,(m.breaking?m.prog*180:180)*glowI*.8,1.5);
+
+    const cx=m.sx+(m.ex-m.sx)*m.prog;
+    const cy=m.sy+(m.ey-m.sy)*m.prog;
+    const cz=m.sz+(m.ez-m.sz)*m.prog;
+    const baseAlpha=(m.breaking?m.prog*180:180)*glowI*.8;
+
+    // ── Línea principal ──
+    stroke3(m.sx,m.sy,m.sz,cx,cy,cz,m.r,m.g,m.b,baseAlpha,1.5);
+
+    // ── Glow: segunda línea más ancha y transparente ──
+    stroke3(m.sx,m.sy,m.sz,cx,cy,cz,m.r,m.g,m.b,baseAlpha*0.25,5);
+
+    // ── Destello en la punta del hilo (punto que avanza) ──
+    const pulse = 0.6 + Math.sin(frame*0.18 + i*1.3)*0.4;
+    glowDot3(cx,cy,cz, 6, m.r,m.g,m.b, (baseAlpha/255)*pulse*1.1);
+
+    // ── Destello aleatorio sobre el hilo (chispa eléctrica) ──
+    if(Math.random()<0.08){
+      const t2=Math.random()*m.prog;
+      const sx2=m.sx+(m.ex-m.sx)*t2;
+      const sy2=m.sy+(m.ey-m.sy)*t2;
+      const sz2=m.sz+(m.ez-m.sz)*t2;
+      glowDot3(sx2,sy2,sz2, 3.5+Math.random()*3, m.r,m.g,m.b, 0.9);
+    }
   }
 }
+
 
 function spawnPart(t,ctrl) {
   const dx=0,dy=200-t.y,dz=0,len=Math.sqrt(dy*dy)||1;
